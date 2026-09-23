@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MoveBox - find the kettle on night one</title>
+<style>
+  :root { --ink:#2a2622; --muted:#7d766c; --accent:#6d5c43; --accent-dk:#564735; --card:#ffffff; --bg:#f7f5f1; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background:var(--bg); color:var(--ink); }
+  .wrap { max-width:680px; margin:0 auto; padding:24px 16px 64px; }
+  h1 { font-size:28px; margin:0 0 6px; }
+  .tag { color:var(--muted); margin:0 0 20px; line-height:1.45; }
+  .card { background:var(--card); border:1px solid #e5dfd4; border-radius:14px; padding:18px; margin-bottom:14px; box-shadow:0 1px 3px rgba(0,0,0,.04); }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; }
+  label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
+  input, textarea { padding:9px 10px; border:1px solid #d9d0bf; border-radius:8px; font-size:15px; background:#fff; font-family:inherit; }
+  input[type=text] { width:170px; }
+  input[type=search] { width:100%; font-size:16px; }
+  textarea { width:100%; min-height:52px; resize:vertical; }
+  .chk { display:flex; align-items:center; gap:6px; font-size:14px; color:var(--muted); padding-bottom:10px; }
+  .chk input { width:auto; }
+  button { padding:10px 16px; border:0; border-radius:8px; background:var(--accent); color:#fff; font-size:15px; cursor:pointer; }
+  button:hover { background:var(--accent-dk); }
+  button.ghost { background:#ece5d8; color:var(--ink); }
+  button.ghost:hover { background:#e0d6c2; }
+  .stats { display:flex; gap:24px; justify-content:center; flex-wrap:wrap; }
+  .stat b { display:block; font-size:22px; text-align:center; }
+  .stat span { color:var(--muted); font-size:13px; }
+  .nightone { background:#f4efe4; border:1px solid #e2d7bd; border-radius:10px; padding:12px 14px; margin-bottom:14px; font-size:14.5px; line-height:1.6; }
+  .box { border:1px solid #e5dfd4; border-radius:10px; padding:12px 14px; margin-bottom:10px; display:flex; gap:12px; align-items:flex-start; }
+  .box .n { flex-shrink:0; width:52px; height:52px; border-radius:10px; background:#efe9db; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:19px; color:var(--accent-dk); }
+  .box.open { background:#f2f7f0; border-color:#d3e3cd; }
+  .box .rm { font-weight:700; font-size:15.5px; }
+  .box .ct { color:var(--muted); font-size:14px; margin-top:2px; line-height:1.45; }
+  .tags { margin-top:6px; display:flex; gap:6px; flex-wrap:wrap; }
+  .tagchip { font-size:11.5px; font-weight:700; border-radius:999px; padding:2px 10px; }
+  .tagchip.fragile { background:#f6e0dd; color:#8f3a33; }
+  .tagchip.first { background:#f6ecd2; color:#8a6a14; }
+  .tagchip.done { background:#e2f0e6; color:#2f6f45; }
+  .box button { margin-left:auto; flex-shrink:0; font-size:12.5px; padding:7px 12px; }
+  .empty { color:var(--muted); text-align:center; padding:18px 0; font-size:15px; }
+  .hidden { display:none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>MoveBox</h1>
+  <p class="tag">Box 14 of 23, somewhere in the truck: the kettle. MoveBox numbers every box, records what is inside, and makes the whole move searchable - so night one has coffee, bedding, and the laptop charger.</p>
+
+  <div class="card">
+    <div class="row">
+      <div><label for="room">Room</label><input type="text" id="room" placeholder="Kitchen"></div>
+      <div style="flex:1;min-width:200px"><label for="contents">Contents (comma separated)</label><textarea id="contents" placeholder="kettle, toaster, mugs"></textarea></div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <span class="chk"><input type="checkbox" id="fragile"><span>fragile</span></span>
+      <span class="chk"><input type="checkbox" id="first"><span>open on night one</span></span>
+      <button id="addBtn">Seal box</button>
+    </div>
+  </div>
+
+  <div class="nightone hidden" id="nightOne"></div>
+
+  <div class="card hidden" id="statsCard">
+    <div class="stats">
+      <div class="stat"><b id="stTotal">0</b><span>boxes</span></div>
+      <div class="stat"><b id="stFragile">0</b><span>fragile</span></div>
+      <div class="stat"><b id="stUnpacked">0</b><span>unpacked</span></div>
+      <div class="stat"><b id="stPct">0%</b><span>done</span></div>
+    </div>
+    <div style="margin-top:14px"><input type="search" id="q" placeholder="Search the whole move - try 'kettle' or 'box 4'"></div>
+  </div>
+
+  <div id="list"></div>
+  <div class="empty" id="empty">No boxes yet. Seal the first one.</div>
+</div>
+<script src="engine.js"></script>
+<script>
+(function(){
+  var E = MoveBoxEngine;
+  var KEY = 'movebox.v1';
+  var boxes = [];
+  try { boxes = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch(e){}
+  function save(){ try { localStorage.setItem(KEY, JSON.stringify(boxes)); } catch(e){} }
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+  function render(){
+    var q = $('q').value;
+    var s = E.stats(boxes);
+    $('statsCard').classList.toggle('hidden', boxes.length === 0);
+    $('empty').classList.toggle('hidden', boxes.length > 0);
+    $('stTotal').textContent = s.total;
+    $('stFragile').textContent = s.fragile;
+    $('stUnpacked').textContent = s.unpacked;
+    $('stPct').textContent = s.pct + '%';
+    var n1 = E.nightOne(boxes);
+    if (n1.length){
+      $('nightOne').classList.remove('hidden');
+      $('nightOne').innerHTML = '<b>Night one, still sealed:</b> ' + n1.map(function(b){ return 'Box ' + b.num + ' (' + esc(b.room) + ')'; }).join(', ');
+    } else { $('nightOne').classList.add('hidden'); }
+    var view = E.search(boxes, q);
+    var html = '';
+    view.slice().sort(function(a,b){ return b.num - a.num; }).forEach(function(b){
+      html += '<div class="box' + (b.unpacked ? ' open' : '') + '" data-n="' + b.num + '">' +
+        '<div class="n">' + b.num + '</div>' +
+        '<div style="flex:1"><div class="rm">' + esc(b.room) + '</div>' +
+        '<div class="ct">' + esc(b.contents) + '</div>' +
+        '<div class="tags">' +
+          (b.fragile ? '<span class="tagchip fragile">fragile</span>' : '') +
+          (b.openFirst ? '<span class="tagchip first">night one</span>' : '') +
+          (b.unpacked ? '<span class="tagchip done">unpacked</span>' : '') +
+        '</div></div>' +
+        '<button class="ghost" data-act="toggle">' + (b.unpacked ? 'Reseal' : 'Unpacked') + '</button>' +
+      '</div>';
+    });
+    $('list').innerHTML = html;
+  }
+
+  $('addBtn').addEventListener('click', function(){
+    var r = E.addBox(boxes, $('room').value, $('contents').value, {fragile:$('fragile').checked, openFirst:$('first').checked});
+    if (!r.added) return;
+    boxes = r.boxes;
+    $('contents').value = ''; $('fragile').checked = false; $('first').checked = false;
+    save(); render();
+  });
+
+  $('q').addEventListener('input', render);
+
+  $('list').addEventListener('click', function(ev){
+    var btn = ev.target.closest('button'); if (!btn) return;
+    var box = ev.target.closest('.box'); if (!box) return;
+    var n = parseInt(box.getAttribute('data-n'), 10);
+    boxes = boxes.map(function(b){ return b.num === n ? Object.assign({}, b, {unpacked:!b.unpacked}) : b; });
+    save(); render();
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
